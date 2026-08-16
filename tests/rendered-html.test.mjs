@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -17,4 +18,13 @@ test("server-renders RitualProof", async () => {
   assert.match(html, /Take my first scan/);
   assert.match(html, /SIMULATED DATA/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
+});
+
+test("mobile photo picker allows camera or library", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /Take a photo or choose from your library/);
+  assert.doesNotMatch(source, /capture=["']user["']/);
+  assert.match(source, /accept="image\/\*"/);
+  assert.match(source, /skin-check\.jpg/);
+  assert.match(source, /shorter side/);
 });
