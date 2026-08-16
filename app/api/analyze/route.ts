@@ -5,13 +5,22 @@ const ACTIONS = ["firmness", "moisture", "wrinkle"];
 
 type YouCamPayload = { status?: number; error?: string; error_code?: string; data?: Record<string, unknown>; files?: unknown[] };
 
+function readableError(message: string) {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("decode_image") || normalized.includes("decode image")) return "We couldn't read this image. Choose an original JPG or PNG photo and try again.";
+  if (normalized.includes("no_face") || normalized.includes("face_not") || normalized.includes("detect face")) return "We couldn't find one clear face. Face forward in even light, keep your full face visible, and try again.";
+  if (normalized.includes("resolution") || normalized.includes("image_size") || normalized.includes("dimension")) return "This photo's dimensions aren't supported. Choose a clear JPG or PNG at least 480 px on the shorter side.";
+  if (normalized.includes("unauthorized") || normalized.includes("api key") || normalized.includes("token")) return "Live analysis is temporarily unavailable. Please try again later.";
+  return message;
+}
+
 function failure(message: string, status = 502) {
   return NextResponse.json({ error: message }, { status });
 }
 
 async function asJson(response: Response): Promise<YouCamPayload> {
   const payload = await response.json().catch(() => ({})) as YouCamPayload;
-  if (!response.ok || (payload.status && payload.status >= 400)) throw new Error(payload.error || `YouCam returned ${response.status}.`);
+  if (!response.ok || (payload.status && payload.status >= 400)) throw new Error(readableError(payload.error || payload.error_code || `YouCam returned ${response.status}.`));
   return payload;
 }
 
@@ -42,8 +51,9 @@ export async function POST(request: Request) {
     if (image.size > 10 * 1024 * 1024) return failure("Please use an image smaller than 10 MB.", 400);
 
     const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" };
+    const safeFileName = image.type === "image/png" ? "skin-check.png" : "skin-check.jpg";
     const initPayload = await asJson(await fetch(`${API_ROOT}/file/skin-analysis`, {
-      method: "POST", headers, body: JSON.stringify({ files: [{ content_type: image.type, file_name: image.name || "skin-check.jpg", file_size: image.size }] }),
+      method: "POST", headers, body: JSON.stringify({ files: [{ content_type: image.type, file_name: safeFileName, file_size: image.size }] }),
     }));
     const initData = (initPayload.data ?? initPayload) as Record<string, unknown>;
     const files = (initData.files ?? initPayload.files) as Array<Record<string, unknown>> | undefined;
@@ -67,7 +77,7 @@ export async function POST(request: Request) {
       if (attempt) await new Promise((resolve) => setTimeout(resolve, 1200));
       const statusPayload = await asJson(await fetch(`${API_ROOT}/task/skin-analysis/${encodeURIComponent(String(taskId))}`, { headers: { Authorization: `Bearer ${apiKey}` }, cache: "no-store" }));
       const statusData = (statusPayload.data ?? {}) as Record<string, unknown>;
-      if (statusData.task_status === "error") throw new Error(String(statusData.error || "YouCam could not analyze this photo."));
+      if (statusData.task_status === "error") throw new Error(readableError(String(statusData.error || "YouCam could not analyze this photo.")));
       if (statusData.task_status === "success") {
         const scores = findScores(statusPayload);
         if (!scores) throw new Error("The scan completed but the requested scores were missing.");
