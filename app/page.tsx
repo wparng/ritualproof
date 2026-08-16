@@ -73,11 +73,47 @@ export default function Home() {
   }), []);
 
   const openStart = () => { setOnboardingStep(1); setView("start"); };
-  const choosePhoto = (event: ChangeEvent<HTMLInputElement>) => {
+  const choosePhoto = async (event: ChangeEvent<HTMLInputElement>) => {
     const picked = event.target.files?.[0] ?? null;
-    setFile(picked); setScores(null); setScanStatus("idle"); setMessage("");
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(picked ? URL.createObjectURL(picked) : null);
+    setScores(null); setMessage("");
+    if (!picked) return;
+    if (!picked.type.startsWith("image/")) {
+      setFile(null); setPreview(null); setScanStatus("error");
+      setMessage("Choose a photo from your camera or photo library.");
+      event.target.value = "";
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(picked);
+    try {
+      const image = new Image();
+      image.src = objectUrl;
+      await image.decode();
+      const shortSide = Math.min(image.naturalWidth, image.naturalHeight);
+      const longSide = Math.max(image.naturalWidth, image.naturalHeight);
+      if (shortSide < 480) throw new Error("This photo is too small. Choose one at least 480 px on its shorter side.");
+
+      let prepared = picked;
+      if (longSide > 4096 || picked.size > 10 * 1024 * 1024 || !["image/jpeg", "image/png"].includes(picked.type)) {
+        const scale = Math.min(4096 / longSide, 1);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(image.naturalWidth * scale);
+        canvas.height = Math.round(image.naturalHeight * scale);
+        canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const outputType = picked.type === "image/png" ? "image/png" : "image/jpeg";
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, .9));
+        if (!blob) throw new Error("We couldn't prepare this photo. Try choosing another JPG or PNG.");
+        prepared = new File([blob], outputType === "image/png" ? "skin-check.png" : "skin-check.jpg", { type: outputType, lastModified: picked.lastModified });
+      }
+
+      if (preview) URL.revokeObjectURL(preview);
+      setFile(prepared); setPreview(URL.createObjectURL(prepared)); setScanStatus("idle");
+    } catch (error) {
+      setFile(null); setPreview(null); setScanStatus("error");
+      setMessage(error instanceof Error ? error.message : "We couldn't read this photo. Try another JPG or PNG.");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   };
   const removePhoto = () => {
     if (preview) URL.revokeObjectURL(preview);
@@ -86,14 +122,20 @@ export default function Home() {
   const analyze = async () => {
     if (!file || !consented) return;
     setScanStatus("loading"); setMessage("");
-    const form = new FormData(); form.append("image", file);
+    const form = new FormData();
+    const safeName = file.type === "image/png" ? "skin-check.png" : "skin-check.jpg";
+    form.append("image", file, safeName);
     try {
-      const response = await fetch("/api/analyze", { method: "POST", body: form });
+      const response = await fetch(new URL("/api/analyze", window.location.href).toString(), { method: "POST", body: form });
       const payload = await response.json() as { scores?: ScanScores; error?: string };
       if (!response.ok || !payload.scores) throw new Error(payload.error || "Analysis could not be completed.");
       setScores(payload.scores); setScanStatus("done");
     } catch (error) {
-      setScanStatus("error"); setMessage(error instanceof Error ? error.message : "Analysis could not be completed.");
+      const rawMessage = error instanceof Error ? error.message : "Analysis could not be completed.";
+      const friendlyMessage = /expected pattern/i.test(rawMessage)
+        ? "We couldn't prepare or send this phone photo. Choose it from your library, or retake it in even light, and try again."
+        : rawMessage;
+      setScanStatus("error"); setMessage(friendlyMessage);
     }
   };
   const timingCopy = startTiming === "not-started"
@@ -137,7 +179,7 @@ export default function Home() {
       {onboardingStep === 3 && <><p className="kicker">Add the right context</p><h1>When did you start?</h1><p className="flow-intro">This helps us describe your first scan honestly.</p><div className="timing-list"><label className={startTiming === "not-started" ? "choice selected" : "choice"}><input type="radio" name="timing" checked={startTiming === "not-started"} onChange={() => setStartTiming("not-started")} /><span><b>I haven&apos;t started yet</b><small>This can be your before-you-start scan.</small></span></label><label className={startTiming === "recently" ? "choice selected" : "choice"}><input type="radio" name="timing" checked={startTiming === "recently"} onChange={() => setStartTiming("recently")} /><span><b>I started recently</b><small>This will be your first recorded scan.</small></span></label><label className={startTiming === "a-while" ? "choice selected" : "choice"}><input type="radio" name="timing" checked={startTiming === "a-while"} onChange={() => setStartTiming("a-while")} /><span><b>I&apos;ve used it for a while</b><small>We won&apos;t describe this as a true before-product result.</small></span></label></div><label className="check"><input type="checkbox" checked={routineChanged} onChange={(e) => setRoutineChanged(e.target.checked)} /> I&apos;m also changing skincare, sleep, diet, or another routine</label><button className="button primary full" onClick={() => setView("scan")}>Continue to my first scan</button></>}
     </div></section>}
 
-    {view === "scan" && <section className="flow-shell"><button className="back" onClick={() => { setView("start"); setOnboardingStep(3); }}>← Back to setup</button><div className="scan-layout"><div><span className="step-count">LIVE YOUCAM ANALYSIS</span><p className="kicker">Same conditions, stronger evidence</p><h1>Take your first scan.</h1><div className="plan-summary"><span>Tracking</span><b>{ritual}</b><small>{category} · {frequency} · Focus: {metricLabels[primaryGoal]}</small></div><div className="capture-tips"><span>Face forward</span><span>Even light</span><span>Neutral expression</span><span>No filter</span><span>Similar makeup</span><span>Same device next time</span></div><p className="privacy-copy">Your photo will be sent to the third-party YouCam API for skin analysis. RitualProof does not create a personal photo gallery; provider-side processing and retention are governed by YouCam&apos;s service.</p>{routineChanged && <p className="context-note">You noted another routine change. We&apos;ll treat future comparisons with extra caution.</p>}</div><article className="upload-card"><label className={preview ? "dropzone has-photo" : "dropzone"}>{preview ? <img src={preview} alt="Selected selfie preview" /> : <><span className="camera">◎</span><b>Choose a clear front-facing photo</b><small>JPG or PNG · maximum 10 MB</small></>}<input type="file" accept="image/jpeg,image/png" capture="user" onChange={choosePhoto} /></label>{file && <div className="file-row"><span>{file.name}</span><button onClick={removePhoto}>Choose another</button></div>}<label className="consent"><input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} /><span>I understand my photo will be sent to YouCam for third-party analysis.</span></label><button className="button primary full" disabled={!file || !consented || scanStatus === "loading"} onClick={analyze}>{scanStatus === "loading" ? "Analyzing with YouCam…" : "Analyze my first scan"}</button>{scanStatus === "loading" && <div className="loading-steps"><span>Uploading securely</span><span>Checking skin indicators</span><span>Preparing your starting point</span></div>}{scanStatus === "error" && <div className="error-box"><b>We couldn&apos;t complete this scan.</b><span>{message}</span><small>Your setup is still here. Try another clear photo or retry this one.</small></div>}{scores && <div className="result-box"><span className="eyebrow">{timingCopy.label} · LIVE RESULT</span><h2>{timingCopy.title}</h2><div className="primary-result"><span>{metricLabels[primaryGoal]}</span><b>Starting point recorded</b><small>One scan cannot show a trend yet.</small></div><div className="supporting-results"><span>Additional context</span>{supportingGoals.map((key) => <b key={key}>✓ {metricLabels[key]} recorded</b>)}</div><JourneySteps active={1} /><div className="next-checkin"><b>What happens next?</b><p>Return around Day 14 under similar conditions to create your first comparison. This timing supports consistent tracking; it does not promise when a product should work.</p><button className="button secondary" onClick={() => setView("demo")}>See what a future comparison looks like</button></div><details className="technical-scores"><summary>View technical YouCam scores</summary><div>{[primaryGoal, ...supportingGoals].map((key) => <span key={key}><b>{Math.round(scores[key])} / 100</b>{metricLabels[key]}</span>)}</div><p>Higher indicates a healthier condition in the YouCam scoring system. RitualProof uses these values for comparison, not as a grade of your skin.</p></details></div>}</article></div></section>}
+    {view === "scan" && <section className="flow-shell"><button className="back" onClick={() => { setView("start"); setOnboardingStep(3); }}>← Back to setup</button><div className="scan-layout"><div><span className="step-count">LIVE YOUCAM ANALYSIS</span><p className="kicker">Same conditions, stronger evidence</p><h1>Take your first scan.</h1><div className="plan-summary"><span>Tracking</span><b>{ritual}</b><small>{category} · {frequency} · Focus: {metricLabels[primaryGoal]}</small></div><div className="capture-tips"><span>Face forward</span><span>Even light</span><span>Neutral expression</span><span>No filter</span><span>Similar makeup</span><span>Same device next time</span></div><p className="privacy-copy">Your photo will be sent to the third-party YouCam API for skin analysis. RitualProof does not create a personal photo gallery; provider-side processing and retention are governed by YouCam&apos;s service.</p>{routineChanged && <p className="context-note">You noted another routine change. We&apos;ll treat future comparisons with extra caution.</p>}</div><article className="upload-card"><div className="photo-guide"><span className="eyebrow">BEFORE YOU CHOOSE</span><h2>Use one clear, front-facing photo</h2><ul><li><b>Center one face</b><span>Keep your full face visible, with hair away from your eyes and cheeks.</span></li><li><b>Use even front light</b><span>Avoid strong shadows, backlight, and colored lighting.</span></li><li><b>Keep a neutral expression</b><span>Look straight ahead. Avoid filters and beauty effects.</span></li><li><b>Choose an original image</b><span>Use a clear photo at least 480 px on the shorter side. Common phone formats are converted when supported.</span></li></ul></div><label className={preview ? "dropzone has-photo" : "dropzone"}>{preview ? <img src={preview} alt="Selected selfie preview" /> : <><span className="camera">◎</span><b>Take a photo or choose from your library</b><small>Phone photos, JPG or PNG · prepared automatically</small></>}<input type="file" accept="image/*" aria-label="Take a photo or choose an image from your library" onChange={choosePhoto} /></label>{file && <div className="file-row"><span>{file.name}</span><button onClick={removePhoto}>Choose another</button></div>}<label className="consent"><input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} /><span>I understand my photo will be sent to YouCam for third-party analysis.</span></label><button className="button primary full" disabled={!file || !consented || scanStatus === "loading"} onClick={analyze}>{scanStatus === "loading" ? "Analyzing with YouCam…" : "Analyze my first scan"}</button>{scanStatus === "loading" && <div className="loading-steps"><span>Uploading securely</span><span>Checking skin indicators</span><span>Preparing your starting point</span></div>}{scanStatus === "error" && <div className="error-box"><b>We couldn&apos;t complete this scan.</b><span>{message}</span><small>Your setup is still here. Try another clear photo or retry this one.</small></div>}{scores && <div className="result-box"><span className="eyebrow">{timingCopy.label} · LIVE RESULT</span><h2>{timingCopy.title}</h2><div className="primary-result"><span>{metricLabels[primaryGoal]}</span><b>Starting point recorded</b><small>One scan cannot show a trend yet.</small></div><div className="supporting-results"><span>Additional context</span>{supportingGoals.map((key) => <b key={key}>✓ {metricLabels[key]} recorded</b>)}</div><JourneySteps active={1} /><div className="next-checkin"><b>What happens next?</b><p>Return around Day 14 under similar conditions to create your first comparison. This timing supports consistent tracking; it does not promise when a product should work.</p><button className="button secondary" onClick={() => setView("demo")}>See what a future comparison looks like</button></div><details className="technical-scores"><summary>View technical YouCam scores</summary><div>{[primaryGoal, ...supportingGoals].map((key) => <span key={key}><b>{Math.round(scores[key])} / 100</b>{metricLabels[key]}</span>)}</div><p>Higher indicates a healthier condition in the YouCam scoring system. RitualProof uses these values for comparison, not as a grade of your skin.</p></details></div>}</article></div></section>}
 
     <footer><div className="wordmark static">RitualProof<span>✦</span></div><p>Proof, not promises. Built with YouCam Skin Analysis API.</p><p>Cosmetic tracking only · Not medical advice</p></footer>
   </main>;
