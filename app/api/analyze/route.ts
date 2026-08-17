@@ -8,6 +8,7 @@ type YouCamPayload = { status?: number; error?: string; error_code?: string; dat
 function readableError(message: string) {
   const normalized = message.toLowerCase();
   if (normalized.includes("decode_image") || normalized.includes("decode image")) return "We couldn't read this image. Choose an original JPG or PNG photo and try again.";
+  if (normalized.includes("face_too_small") || normalized.includes("face too small")) return "Your face is too small in the photo for YouCam to analyze. Move closer or crop the photo so your face fills most of the frame—from forehead to chin—then try again.";
   if (normalized.includes("no_face") || normalized.includes("face_not") || normalized.includes("detect face")) return "We couldn't find one clear face. Face forward in even light, keep your full face visible, and try again.";
   if (normalized.includes("resolution") || normalized.includes("image_size") || normalized.includes("dimension")) return "This photo's dimensions aren't supported. Choose a clear JPG or PNG at least 480 px on the shorter side.";
   if (normalized.includes("unauthorized") || normalized.includes("api key") || normalized.includes("token")) return "Live analysis is temporarily unavailable. Please try again later.";

@@ -14,21 +14,23 @@ RitualProof does not claim to prove that a product caused a change. It helps a u
 
 1. Name one beauty-from-within ritual.
 2. Choose one primary focus: Hydration, Firmness, or Fine-line condition.
-3. Record whether the first scan is before starting or after the ritual has already begun.
+3. Record whether the first scan is before starting or after the ritual has already begun, including an approximate start date when relevant.
 4. Follow standardized photo guidance and consent to third-party YouCam processing.
 5. Run a real YouCam analysis for moisture, firmness, and wrinkle-related scores.
-6. Establish a starting point without treating one scan as a verdict.
-7. Explore Maya's clearly labeled simulated Day 0 / Day 14 / Day 28 journey to understand future comparisons.
+6. Save the scores and tracking context as a device-local starting reference, without saving the photo.
+7. Return for a second live YouCam scan and calculate the change from the saved reference.
+8. Read a cautious comparison that distinguishes observed movement from product causality.
+9. Explore Maya's clearly labeled simulated Day 0 / Day 14 / Day 28 journey to understand how several check-ins could form an early pattern.
 
 The selected focus becomes the primary indicator. The other two scores provide additional context without requiring the user to interpret a long list of metrics.
 
 ## Real API vs. simulated data
 
-- **Live first scan:** a real server-side YouCam Skin Analysis API call.
-- **Maya's journey:** seeded, simulated longitudinal data used to demonstrate the future return experience within a hackathon timeframe.
-- **Current limitation:** this MVP does not yet persist a visitor's result or perform a real returning-user comparison.
+- **Personal first scan:** a real server-side YouCam Skin Analysis API call. The returned scores and tracking setup are stored in that browser as the user's starting reference.
+- **Personal follow-up scan:** a second real YouCam API call. RitualProof retrieves the starting reference and dynamically calculates the score changes.
+- **Maya's journey:** seeded, simulated Day 0 / Day 14 / Day 28 data used to demonstrate a longer-term journey without pretending that several weeks passed during the hackathon.
 
-All simulated content is labeled in the interface. A simulated trend is never presented as evidence from a real person.
+The personalized two-scan comparison is not simulated. All sample content in Maya's journey is explicitly labeled and is never presented as evidence from a real person.
 
 ## How YouCam is essential
 
@@ -41,9 +43,11 @@ YouCam Skin Analysis API
     ↓
 Moisture, firmness, and wrinkle-related numerical outputs
     ↓
-Primary indicator + supporting context
+Device-local starting reference
     ↓
-Starting point and future comparison journey
+Second live YouCam scan
+    ↓
+Dynamic baseline-to-follow-up comparison
 ```
 
 Without standardized numerical skin outputs from YouCam, RitualProof would only be a subjective photo journal.
@@ -54,7 +58,9 @@ RitualProof uses cautious language such as **Possible improvement** and **No cle
 
 Photo conditions can affect results. The experience reminds users to keep lighting, angle, expression, makeup, and device as consistent as possible.
 
-The app does not create a personal photo gallery. A selected image is sent to the third-party YouCam service for analysis. Exact provider-side processing and retention must be described according to the applicable YouCam service terms before making stronger deletion claims.
+RitualProof also keeps product timing and tracking timing separate. A user who has already taken a supplement for a month does not receive a misleading "before product" or "Product Day 0" label. If the user reports other changes to skincare, sleep, diet, or another routine, the comparison preserves that context and asks for extra caution.
+
+The app does not create a personal photo gallery. A selected image is sent to the third-party YouCam service for analysis. RitualProof stores the numerical scores and tracking setup in the user's browser, not the photo. Provider-side processing and retention are governed by the applicable YouCam service terms.
 
 ## Run locally
 
@@ -81,23 +87,27 @@ npm test
 Not included in this hackathon version:
 
 - accounts or login
-- Supabase or a persistent follow-up database
+- cloud sync, Supabase, or a cross-device database
 - reminders or notifications
 - product rankings or supplement recommendations
 - medical diagnosis or treatment advice
 - a claim that a product caused a measured change
 
+Device-local references remain available in the same browser unless the user clears that browser's storage. They are not synchronized to another browser or device.
+
 ## Roadmap
 
-- Store numerical starting-point and follow-up results, without requiring face-photo retention.
+- Add optional accounts and cross-device history without requiring face-photo retention.
 - Start a new tracking plan when the user changes products.
 - Add photo-condition confidence signals.
 - Calibrate comparison thresholds using same-image repeatability and lighting-variance tests.
-- Support real returning check-ins and longer-term trend views.
+- Support reminders, adherence context, and longer-term trend views across several live check-ins.
 
 ## Hackathon validation checklist
 
 - Confirm a successful end-to-end YouCam call.
+- Confirm the first live result remains in the same browser after refresh.
+- Confirm a second live scan produces a dynamically calculated comparison.
 - Analyze the same permitted test image three times and document score variation.
 - Compare same-day images under different lighting.
 - Record photo-quality error messages, latency, and quota behavior.
